@@ -1,0 +1,16 @@
+{
+  "dataset": "MABe Mouse Behavior (Sample)",
+  "num_mice": 2,
+  "num_keypoints_per_mouse": 7,
+  "num_coords": 2,
+  "features_per_frame": 28,
+  "num_classes": 4,
+  "behavior_classes": {
+    "0": "other",
+    "1": "close_investigation",
+    "2": "mount",
+    "3": "attack"
+  },
+  "train_sequences": 5,
+  "val_sequences": 2
+}
