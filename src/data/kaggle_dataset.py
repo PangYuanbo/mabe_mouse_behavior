@@ -51,31 +51,46 @@ class KaggleMABeDataset(Dataset):
 
         # Load metadata
         print(f"Loading {split} data from {data_dir}...")
-        train_csv = pd.read_csv(self.data_dir / "train.csv")
 
-        # Split train/val (80/20)
-        np.random.seed(42)
-        video_ids = train_csv['video_id'].unique()
-        np.random.shuffle(video_ids)
-
-        split_idx = int(len(video_ids) * 0.8)
-        if split == 'train':
-            selected_ids = video_ids[:split_idx]
+        if split == 'test':
+            # Try to load test.csv if available
+            test_csv_path = self.data_dir / "test.csv"
+            if test_csv_path.exists():
+                self.metadata = pd.read_csv(test_csv_path)
+                print(f"Loaded test.csv with {len(self.metadata)} videos")
+            else:
+                # Use test labs from train.csv (MABe22_keypoints, MABe22_movies)
+                train_csv = pd.read_csv(self.data_dir / "train.csv")
+                test_labs = ['MABe22_keypoints', 'MABe22_movies']
+                self.metadata = train_csv[train_csv['lab_id'].isin(test_labs)].copy()
+                print(f"Using test labs: {test_labs}")
         else:
-            selected_ids = video_ids[split_idx:]
+            # Train/val split
+            train_csv = pd.read_csv(self.data_dir / "train.csv")
 
-        self.metadata = train_csv[train_csv['video_id'].isin(selected_ids)].copy()
+            # Split train/val (80/20)
+            np.random.seed(42)
+            video_ids = train_csv['video_id'].unique()
+            np.random.shuffle(video_ids)
 
-        # Filter to only labs with annotation files (exclude test sets)
-        # MABe22_keypoints and MABe22_movies don't have annotations
-        labs_with_annotations = [
-            'AdaptableSnail', 'BoisterousParrot', 'CRIM13', 'CalMS21_supplemental',
-            'CalMS21_task1', 'CalMS21_task2', 'CautiousGiraffe', 'DeliriousFly',
-            'ElegantMink', 'GroovyShrew', 'InvincibleJellyfish', 'JovialSwallow',
-            'LyricalHare', 'NiftyGoldfinch', 'PleasantMeerkat', 'ReflectiveManatee',
-            'SparklingTapir', 'TranquilPanther', 'UppityFerret'
-        ]
-        self.metadata = self.metadata[self.metadata['lab_id'].isin(labs_with_annotations)].copy()
+            split_idx = int(len(video_ids) * 0.8)
+            if split == 'train':
+                selected_ids = video_ids[:split_idx]
+            else:
+                selected_ids = video_ids[split_idx:]
+
+            self.metadata = train_csv[train_csv['video_id'].isin(selected_ids)].copy()
+
+            # Filter to only labs with annotation files (exclude test sets)
+            # MABe22_keypoints and MABe22_movies don't have annotations
+            labs_with_annotations = [
+                'AdaptableSnail', 'BoisterousParrot', 'CRIM13', 'CalMS21_supplemental',
+                'CalMS21_task1', 'CalMS21_task2', 'CautiousGiraffe', 'DeliriousFly',
+                'ElegantMink', 'GroovyShrew', 'InvincibleJellyfish', 'JovialSwallow',
+                'LyricalHare', 'NiftyGoldfinch', 'PleasantMeerkat', 'ReflectiveManatee',
+                'SparklingTapir', 'TranquilPanther', 'UppityFerret'
+            ]
+            self.metadata = self.metadata[self.metadata['lab_id'].isin(labs_with_annotations)].copy()
 
         print(f"Total videos in metadata: {len(self.metadata)}")
 
@@ -100,8 +115,14 @@ class KaggleMABeDataset(Dataset):
             video_id = row['video_id']
             lab_id = row['lab_id']
 
+            # Determine tracking folder based on split
+            if self.split == 'test':
+                tracking_folder = "test_tracking"
+            else:
+                tracking_folder = "train_tracking"
+
             # Load tracking data (keypoints)
-            tracking_file = self.data_dir / "train_tracking" / lab_id / f"{video_id}.parquet"
+            tracking_file = self.data_dir / tracking_folder / lab_id / f"{video_id}.parquet"
             if not tracking_file.exists():
                 print(f"Warning: Tracking file not found for {lab_id}/{video_id}")
                 continue
@@ -109,16 +130,18 @@ class KaggleMABeDataset(Dataset):
             try:
                 tracking_df = pd.read_parquet(tracking_file)
 
-                # Load annotation data (labels)
-                annotation_file = self.data_dir / "train_annotation" / lab_id / f"{video_id}.parquet"
-                if not annotation_file.exists():
-                    print(f"Warning: Annotation file not found for {lab_id}/{video_id}")
-                    continue
+                if self.split == 'test':
+                    # Test data: no annotations, create dummy labels
+                    keypoints, labels = self._process_sequence(tracking_df, annotation_df=None)
+                else:
+                    # Train/val data: load annotations
+                    annotation_file = self.data_dir / "train_annotation" / lab_id / f"{video_id}.parquet"
+                    if not annotation_file.exists():
+                        print(f"Warning: Annotation file not found for {lab_id}/{video_id}")
+                        continue
 
-                annotation_df = pd.read_parquet(annotation_file)
-
-                # Extract keypoints and labels
-                keypoints, labels = self._process_sequence(tracking_df, annotation_df)
+                    annotation_df = pd.read_parquet(annotation_file)
+                    keypoints, labels = self._process_sequence(tracking_df, annotation_df)
 
                 if keypoints is None:
                     print(f"Warning: Could not process keypoints/labels for {lab_id}/{video_id}")
@@ -141,6 +164,7 @@ class KaggleMABeDataset(Dataset):
                         'labels': window_labels,
                         'video_id': video_id,
                         'lab_id': lab_id,
+                        'start_frame': start_idx,  # For submission file
                     })
 
                 num_windows = len(self.sequences) - num_windows_before
@@ -194,44 +218,49 @@ class KaggleMABeDataset(Dataset):
             num_frames = len(tracking_pivot)
             labels = np.zeros(num_frames, dtype=np.int64)  # Default: 0 = other/none
 
-            # Map actions to class indices
-            # For now, group actions into broad categories
-            # 0 = background/other
-            # 1 = social investigation (sniff, approach)
-            # 2 = mating behaviors (mount, intromit)
-            # 3 = aggressive behaviors (attack, chase, bite)
-            action_mapping = {
-                # Social investigation
-                'sniff': 1, 'sniffgenital': 1, 'sniffface': 1, 'sniffbody': 1,
-                'reciprocalsniff': 1, 'approach': 1, 'follow': 1,
-                # Mating behaviors
-                'mount': 2, 'intromit': 2, 'attemptmount': 2, 'ejaculate': 2,
-                # Aggressive behaviors
-                'attack': 3, 'chase': 3, 'chaseattack': 3, 'bite': 3,
-                'dominance': 3, 'defend': 3, 'flinch': 3,
-                # Everything else as background
-                'rear': 0, 'avoid': 0, 'escape': 0, 'freeze': 0,
-                'selfgroom': 0, 'allogroom': 0, 'rest': 0, 'dig': 0,
-                'climb': 0, 'shepherd': 0, 'disengage': 0, 'run': 0,
-                'exploreobject': 0, 'biteobject': 0, 'dominancegroom': 0,
-                'huddle': 0, 'other': 0,
-            }
+            # For test data, annotation_df is None, so skip label processing
+            if annotation_df is not None:
+                # Map actions to class indices
+                # For now, group actions into broad categories
+                # 0 = background/other
+                # 1 = social investigation (sniff, approach)
+                # 2 = mating behaviors (mount, intromit)
+                # 3 = aggressive behaviors (attack, chase, bite)
+                action_mapping = {
+                    # Social investigation
+                    'sniff': 1, 'sniffgenital': 1, 'sniffface': 1, 'sniffbody': 1,
+                    'reciprocalsniff': 1, 'approach': 1, 'follow': 1,
+                    # Mating behaviors
+                    'mount': 2, 'intromit': 2, 'attemptmount': 2, 'ejaculate': 2,
+                    # Aggressive behaviors
+                    'attack': 3, 'chase': 3, 'chaseattack': 3, 'bite': 3,
+                    'dominance': 3, 'defend': 3, 'flinch': 3,
+                    # Everything else as background
+                    'rear': 0, 'avoid': 0, 'escape': 0, 'freeze': 0,
+                    'selfgroom': 0, 'allogroom': 0, 'rest': 0, 'dig': 0,
+                    'climb': 0, 'shepherd': 0, 'disengage': 0, 'run': 0,
+                    'exploreobject': 0, 'biteobject': 0, 'dominancegroom': 0,
+                    'huddle': 0, 'other': 0,
+                }
 
-            # Fill in labels for each event
-            for _, row in annotation_df.iterrows():
-                action = row['action']
-                start_frame = row['start_frame']
-                stop_frame = row['stop_frame']
+                # Fill in labels for each event
+                for _, row in annotation_df.iterrows():
+                    action = row['action']
+                    start_frame = row['start_frame']
+                    stop_frame = row['stop_frame']
 
-                # Map action to label
-                label = action_mapping.get(action, 0)
+                    # Map action to label
+                    label = action_mapping.get(action, 0)
 
-                # Fill frames in this range
-                for frame in range(start_frame, stop_frame + 1):
-                    if frame < num_frames:
-                        # If multiple behaviors overlap, keep the higher priority one
-                        if label > labels[frame]:
-                            labels[frame] = label
+                    # Fill frames in this range
+                    for frame in range(start_frame, stop_frame + 1):
+                        if frame < num_frames:
+                            # If multiple behaviors overlap, keep the higher priority one
+                            if label > labels[frame]:
+                                labels[frame] = label
+
+            # Add motion features (speed and acceleration)
+            keypoints = self._add_motion_features(keypoints, fps=33.3)
 
             return keypoints, labels
 
@@ -241,14 +270,60 @@ class KaggleMABeDataset(Dataset):
             traceback.print_exc()
             return None, None
 
+    def _add_motion_features(self, keypoints, fps=33.3):
+        """
+        Add speed and acceleration features for each keypoint
+
+        Args:
+            keypoints: [T, D] array where D = num_keypoints * 2 (x, y coordinates)
+            fps: Frames per second for time conversion
+
+        Returns:
+            enhanced_keypoints: [T, D*3] array with original + speed + acceleration
+        """
+        dt = 1.0 / fps  # Time interval between frames
+        T, D = keypoints.shape
+        num_keypoints = D // 2  # Number of (x, y) coordinate pairs
+
+        # Reshape to [T, num_keypoints, 2] for easier computation
+        coords = keypoints.reshape(T, num_keypoints, 2)
+
+        # 1. Compute velocity (speed) for each keypoint
+        # velocity[t] = (position[t] - position[t-1]) / dt
+        velocity = np.zeros_like(coords)
+        velocity[1:] = (coords[1:] - coords[:-1]) / dt
+        velocity[0] = velocity[1]  # Copy second frame to first (no prior frame)
+
+        # Compute speed magnitude: sqrt(vx^2 + vy^2)
+        speed = np.sqrt(np.sum(velocity ** 2, axis=2, keepdims=True))  # [T, num_keypoints, 1]
+
+        # 2. Compute acceleration
+        # acceleration[t] = (velocity[t] - velocity[t-1]) / dt
+        acceleration_vec = np.zeros_like(velocity)
+        acceleration_vec[1:] = (velocity[1:] - velocity[:-1]) / dt
+        acceleration_vec[0] = acceleration_vec[1]
+
+        # Compute acceleration magnitude
+        acceleration = np.sqrt(np.sum(acceleration_vec ** 2, axis=2, keepdims=True))  # [T, num_keypoints, 1]
+
+        # 3. Flatten back to [T, D]
+        keypoints_flat = coords.reshape(T, -1)  # Original coordinates
+        speed_flat = speed.squeeze(-1).reshape(T, -1)  # Speed for each keypoint
+        accel_flat = acceleration.squeeze(-1).reshape(T, -1)  # Acceleration for each keypoint
+
+        # 4. Concatenate: [original, speed, acceleration]
+        enhanced_keypoints = np.concatenate([keypoints_flat, speed_flat, accel_flat], axis=1)
+
+        return enhanced_keypoints
+
     def __len__(self):
         return len(self.sequences)
 
     def __getitem__(self, idx):
         """
         Returns:
-            keypoints: [sequence_length, input_dim]
-            labels: [sequence_length]
+            For train/val split: keypoints, labels
+            For test split: keypoints, labels, metadata
         """
         item = self.sequences[idx]
 
@@ -277,7 +352,16 @@ class KaggleMABeDataset(Dataset):
         keypoints = torch.FloatTensor(keypoints)
         labels = torch.LongTensor(labels)
 
-        return keypoints, labels
+        # For test split, return metadata for submission generation
+        if self.split == 'test':
+            metadata = {
+                'video_id': item['video_id'],
+                'lab_id': item['lab_id'],
+                'start_frame': item['start_frame'],
+            }
+            return keypoints, labels, metadata
+        else:
+            return keypoints, labels
 
 
 def create_kaggle_dataloaders(

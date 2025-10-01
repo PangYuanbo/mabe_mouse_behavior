@@ -1,0 +1,91 @@
+# MABe Mouse Behavior Detection - Advanced Configuration
+# Based on winning solutions and research papers
+
+# Data settings
+train_data_dir: 'data/train'
+val_data_dir: 'data/val'
+train_annotation_file: 'data/train_annotations.json'
+val_annotation_file: 'data/val_annotations.json'
+
+# Mouse parameters
+num_mice: 2
+num_keypoints: 7  # Head, ears, spine, tail
+
+# Model settings
+model_type: 'conv_bilstm'  # Options: 'conv_bilstm', 'tcn', 'hybrid', 'transformer'
+input_dim: 28  # Will be updated based on feature engineering
+num_classes: 4  # 0: other, 1: close_investigation, 2: mount, 3: attack
+
+# Conv1DBiLSTM settings (96% accuracy in research)
+conv_channels: [64, 128, 256]
+lstm_hidden: 256
+lstm_layers: 2
+
+# TCN settings
+tcn_channels: [64, 128, 256, 256]
+kernel_size: 3
+
+# Hybrid model settings
+pointnet_dim: 128
+temporal_hidden: 256
+temporal_model: 'lstm'  # 'lstm' or 'transformer'
+
+# Feature engineering
+use_feature_engineering: true
+include_pca: true
+include_temporal_stats: true
+pca_components: 16
+
+# Sequence settings
+sequence_length: 100  # 3 seconds at 33.3Hz (from research)
+frame_gap: 1
+fps: 33.3  # For feature computation
+
+# Training settings
+epochs: 100
+batch_size: 64  # Increased for A10G (24GB VRAM)
+learning_rate: 0.0003  # Reduced for stability
+weight_decay: 0.0001  # Stronger regularization
+optimizer: 'adamw'
+grad_clip: 1.0
+
+# Loss settings
+loss: 'cross_entropy'
+class_weights: [0.5, 10.0, 15.0, 15.0]  # Reduced weights to prevent overfitting
+label_smoothing: 0.0  # Disabled for heavily imbalanced data
+
+# Learning rate scheduler
+scheduler: 'plateau'  # Adaptive to validation loss
+scheduler_patience: 5
+scheduler_factor: 0.5
+min_lr: 0.00001
+
+# Data augmentation
+use_augmentation: true
+noise_std: 0.01  # Add Gaussian noise to keypoints
+temporal_jitter: 2  # Random frame offset
+
+# Regularization
+dropout: 0.3  # Higher dropout
+mixup_alpha: 0.0  # Mixup disabled for heavily imbalanced data
+
+# Data loader settings
+num_workers: 4
+
+# Checkpoint settings
+checkpoint_dir: 'checkpoints'
+save_freq: 5
+early_stopping_patience: 15
+
+# Device
+device: 'cuda'
+
+# Random seed
+seed: 42
+
+# Evaluation
+eval_metrics: ['accuracy', 'f1_macro', 'precision', 'recall']
+
+# Modal deployment
+modal_gpu: 'A10G'  # Upgrade from T4
+modal_timeout: 14400  # 4 hours

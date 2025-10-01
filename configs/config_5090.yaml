@@ -1,0 +1,77 @@
+# MABe Mouse Behavior Detection - RTX 5090 Optimized Configuration
+# Includes motion features (speed + acceleration)
+
+# Data settings
+train_data_dir: 'data/train'
+val_data_dir: 'data/val'
+train_annotation_file: 'data/train_annotations.json'
+val_annotation_file: 'data/val_annotations.json'
+data_dir: 'data/kaggle'  # For Kaggle real data
+
+# Mouse parameters
+num_mice: 4  # Real Kaggle data has 4 mice
+num_keypoints: 18  # Real data has 18 keypoints per mouse
+
+# Model settings
+model_type: 'conv_bilstm'  # Conv1DBiLSTM architecture (best performance)
+input_dim: 288  # Will be auto-updated: 144 (coords) + 72 (speed) + 72 (accel) = 288
+num_classes: 4  # 0: background, 1: social, 2: mating, 3: aggressive
+
+# Conv1DBiLSTM settings
+conv_channels: [64, 128, 256]
+lstm_hidden: 256
+lstm_layers: 2
+
+# Sequence settings
+sequence_length: 100  # 3 seconds at 33.3Hz
+frame_gap: 1
+fps: 33.3
+
+# Training settings - RTX 5090 Optimized
+epochs: 100
+batch_size: 96  # Increased from 64 to utilize 32GB VRAM
+learning_rate: 0.0003
+weight_decay: 0.0001
+optimizer: 'adamw'
+grad_clip: 1.0
+
+# Loss settings - Balanced weights
+loss: 'cross_entropy'
+class_weights: [1.0, 5.0, 8.0, 8.0]  # Reduced from [0.5, 10, 15, 15] to reduce false positives
+label_smoothing: 0.0
+
+# Learning rate scheduler
+scheduler: 'plateau'
+scheduler_patience: 5
+scheduler_factor: 0.5
+min_lr: 0.00001
+
+# Data augmentation
+use_augmentation: true
+noise_std: 0.01
+temporal_jitter: 2
+
+# Regularization
+dropout: 0.3
+mixup_alpha: 0.0
+
+# Data loader settings - Local machine
+num_workers: 4  # Increased for local 5090
+
+# Checkpoint settings
+checkpoint_dir: 'checkpoints/5090'
+save_freq: 5  # Save every 5 epochs
+early_stopping_patience: 15
+
+# Device
+device: 'cuda'
+
+# Random seed
+seed: 42
+
+# Evaluation
+eval_metrics: ['accuracy', 'f1_macro', 'precision', 'recall']
+
+# Motion features
+use_motion_features: true  # Enable speed and acceleration features
+motion_fps: 33.3  # FPS for motion calculation

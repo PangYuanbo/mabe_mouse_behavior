@@ -1,0 +1,47 @@
+# MABe Mouse Behavior Detection - Training Configuration
+
+# Data settings
+train_data_dir: 'data/train'
+val_data_dir: 'data/val'
+train_annotation_file: 'data/train_annotations.json'
+val_annotation_file: 'data/val_annotations.json'
+
+# Model settings
+model_type: 'transformer'  # 'transformer' or 'lstm'
+input_dim: 28  # 2 mice * 7 keypoints * 2 coords = 28 features
+num_classes: 4  # 0: other, 1: close_investigation, 2: mount, 3: attack
+hidden_dim: 256
+num_layers: 4
+num_heads: 8
+dropout: 0.1
+bidirectional: true  # For LSTM model
+
+# Sequence settings
+sequence_length: 64  # Number of frames in each sequence
+frame_gap: 1  # Gap between frames for temporal sampling
+
+# Training settings
+epochs: 10
+batch_size: 16
+learning_rate: 0.0001
+weight_decay: 0.00001
+optimizer: 'adamw'  # 'adam' or 'adamw'
+loss: 'cross_entropy'  # 'cross_entropy' or 'bce'
+grad_clip: 1.0
+
+# Learning rate scheduler
+scheduler: 'cosine'  # 'cosine', 'plateau', or null
+min_lr: 0.000001
+
+# Data loader settings
+num_workers: 2
+
+# Checkpoint settings
+checkpoint_dir: 'checkpoints'
+save_freq: 5  # Save checkpoint every N epochs
+
+# Device
+device: 'cpu'  # 'cuda' or 'cpu'
+
+# Random seed
+seed: 42
