@@ -1,0 +1,106 @@
+# V8 Fine-grained Behavior Detection - RTX 5090 Configuration
+# Multi-task learning: Action (28 classes) + Agent + Target
+
+# Data settings
+data_dir: 'C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle'
+use_kaggle_data: true
+
+# Mouse parameters
+num_mice: 4
+num_keypoints: 7  # Standard bodyparts per mouse
+
+# Model settings
+model_type: 'v8_multitask'
+input_dim: 112  # 7 bodyparts * 4 mice * 2 coords + 28 speed + 28 accel = 56 + 28 + 28 = 112
+num_actions: 28  # Fine-grained behavior classes (0=background, 1-27=behaviors)
+
+# V8 Multi-task architecture
+conv_channels: [128, 256, 512]
+lstm_hidden: 256
+lstm_layers: 2
+
+# Sequence settings
+sequence_length: 100  # Sliding windows
+stride: 25  # Training stride (75% overlap)
+frame_gap: 1
+fps: 33.3
+
+# Training settings - RTX 5090 Optimized (32GB VRAM)
+epochs: 100
+batch_size: 512  # Large batch for 5090
+learning_rate: 0.0001  # Reduced to prevent NaN loss
+weight_decay: 0.0001
+optimizer: 'adamw'
+grad_clip: 1.0
+
+# Warmup for stability
+warmup_epochs: 3
+
+# Multi-task loss weights
+action_loss_weight: 1.0   # Primary task
+agent_loss_weight: 0.3    # Secondary task
+target_loss_weight: 0.3   # Secondary task
+
+# Focal Loss for action classification
+use_focal_loss: true
+focal_gamma: 2.0  # Focus on hard examples
+
+# Class weights for action classification (handle imbalance)
+# Computed as: total_samples / (num_classes * class_count)
+# Will be computed dynamically during training
+class_weights: null  # Auto-compute from data
+
+# Learning rate scheduler
+scheduler: 'cosine'
+scheduler_patience: 5
+scheduler_factor: 0.5
+min_lr: 0.00001
+warmup_lr_init: 0.00001
+
+# Data augmentation
+use_augmentation: true
+noise_std: 0.01
+temporal_jitter: 2
+
+# Regularization
+dropout: 0.3
+mixup_alpha: 0.0  # No mixup for multi-task
+
+# Data loader settings - optimized for 5090
+num_workers: 0  # Windows: 0 to avoid multiprocessing issues
+pin_memory: true
+prefetch_factor: 2
+
+# Checkpoint settings
+checkpoint_dir: 'checkpoints/v8_5090'
+save_freq: 5
+early_stopping_patience: 20  # More patience for multi-task
+
+# Device
+device: 'cuda'
+gpu_id: 0
+
+# Mixed precision training
+use_amp: false  # Disabled - causing NaN loss
+
+# Random seed
+seed: 42
+
+# Evaluation
+eval_metrics: ['accuracy', 'f1_macro', 'precision', 'recall']
+
+# Motion features
+use_motion_features: true
+motion_fps: 33.3
+
+# Kaggle submission
+min_interval_duration: 5  # Minimum frames for valid interval
+confidence_threshold: 0.5  # Minimum confidence for submission
+
+# Stratified sampling for class imbalance
+use_stratified_sampling: true
+oversample_rare_classes: true  # Oversample classes with <1000 samples
+
+# Logging
+log_interval: 10  # Log every N batches
+verbose: true

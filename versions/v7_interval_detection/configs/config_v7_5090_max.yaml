@@ -1,0 +1,71 @@
+# V7 Interval Detection - RTX 5090 Maximum Utilization
+# Aggressive settings to fully utilize 32GB VRAM
+
+# Data settings
+data_dir: 'C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle'
+sequence_length: 1000  # Full video sequences
+use_motion_features: true
+fps: 33.3  # Frames per second for motion feature computation
+
+# Model architecture
+# With motion features: 142 (coords) + 71 (speed) + 71 (accel) = 284
+input_dim: 284  # 71 keypoints × 2 + 71 speed + 71 accel
+hidden_dim: 256
+num_actions: 4  # attack, avoid, chase, chaseattack
+num_agents: 4
+
+# Anchor settings (multi-scale interval detection)
+anchor_scales: [10, 30, 60, 120, 240]  # Frame lengths
+
+# Training settings - MAXIMUM 5090 UTILIZATION (32GB VRAM)
+epochs: 100
+batch_size: 48  # AGGRESSIVE - push 5090 to limit with FP16
+learning_rate: 0.0002  # Increased for larger batch
+weight_decay: 0.00001
+optimizer: 'adamw'
+grad_clip: 1.0
+
+# Memory optimization
+gradient_accumulation_steps: 1  # Increase to 2 if OOM occurs
+mixed_precision: true  # REQUIRED - FP16 training for 2x memory efficiency
+
+# Loss settings
+iou_threshold_pos: 0.5  # Positive anchor threshold
+iou_threshold_neg: 0.4  # Negative anchor threshold
+focal_alpha: 0.25
+focal_gamma: 2.0
+
+# Inference settings
+score_threshold: 0.5  # Objectness score threshold
+nms_threshold: 0.3    # NMS IoU threshold
+
+# Data loader
+num_workers: 8
+pin_memory: true
+prefetch_factor: 2  # Prefetch batches for faster loading
+
+# Checkpoint settings
+checkpoint_dir: 'checkpoints/v7_5090_max'
+save_freq: 5
+early_stopping_patience: 15
+
+# Device
+device: 'cuda'
+gpu_id: 0
+
+# Random seed
+seed: 42
+
+# Evaluation
+iou_eval_threshold: 0.5  # IoU threshold for F1 metric
+eval_metrics: ['precision', 'recall', 'f1']
+
+# Performance notes
+# Estimated VRAM usage with batch=48, FP16:
+#   Model: ~0.5 GB
+#   Activations per sample: ~150 MB
+#   Total: ~7-8 GB (activations) + 0.5 GB (model) = ~8.5 GB
+#   5090 has 32 GB → plenty of headroom
+# If OOM occurs:
+#   1. Reduce batch_size to 32
+#   2. Set gradient_accumulation_steps=2 (effective batch=64)

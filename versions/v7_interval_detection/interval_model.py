@@ -108,6 +108,14 @@ class TemporalActionDetector(nn.Module):
             nn.Linear(128, num_anchors)
         )
 
+        # Frame-level classification head (for dual metric evaluation)
+        self.frame_classifier = nn.Sequential(
+            nn.Linear(hidden_dim * 2, 128),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(128, num_actions)
+        )
+
     def generate_anchors(self, sequence_length: int) -> torch.Tensor:
         """
         Generate anchor intervals
@@ -157,6 +165,7 @@ class TemporalActionDetector(nn.Module):
                 - 'target_logits': [batch, num_anchors, num_agents]
                 - 'boundary_offsets': [batch, num_anchors, 2]
                 - 'objectness': [batch, num_anchors]
+                - 'frame_logits': [batch, seq_len//4, num_actions] (for dual metrics)
         """
         batch_size, seq_len, _ = x.shape
 
@@ -167,6 +176,9 @@ class TemporalActionDetector(nn.Module):
 
         # Temporal modeling
         lstm_out, _ = self.lstm(conv_out)  # [batch, seq_len//4, hidden*2]
+
+        # Frame-level predictions (for dual metric evaluation)
+        frame_logits = self.frame_classifier(lstm_out)  # [batch, seq_len//4, num_actions]
 
         # Predictions per position
         num_positions = lstm_out.shape[1]
@@ -204,6 +216,7 @@ class TemporalActionDetector(nn.Module):
             'target_logits': target_logits,
             'boundary_offsets': boundary_offsets,
             'objectness': objectness,
+            'frame_logits': frame_logits,  # Added for dual metrics
         }
 
     def predict_intervals(

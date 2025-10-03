@@ -98,12 +98,12 @@ class KaggleMABeDataset(Dataset):
         self.sequences = []
         self._load_sequences(max_sequences=max_sequences)
 
-        print(f"✓ Loaded {len(self.sequences)} sequences for {split}")
+        print(f"[OK] Loaded {len(self.sequences)} sequences for {split}")
 
         # Determine max input dimension across all sequences
         if len(self.sequences) > 0:
             self.max_input_dim = max(seq['keypoints'].shape[1] for seq in self.sequences)
-            print(f"✓ Max input dimension: {self.max_input_dim}")
+            print(f"[OK] Max input dimension: {self.max_input_dim}")
         else:
             self.max_input_dim = 0
 
@@ -427,7 +427,7 @@ def create_kaggle_dataloaders(
     max_dim = max(train_dataset.max_input_dim, val_dataset.max_input_dim)
     train_dataset.max_input_dim = max_dim
     val_dataset.max_input_dim = max_dim
-    print(f"✓ Unified max input dimension: {max_dim}")
+    print(f"[OK] Unified max input dimension: {max_dim}")
 
     # Fit PCA on training data if using feature engineering
     if use_feature_engineering and feature_engineer is not None:
@@ -444,7 +444,7 @@ def create_kaggle_dataloaders(
 
         all_features = np.vstack(all_features)
         feature_engineer.fit_pca(all_features)
-        print(f"✓ PCA fitted with explained variance: {feature_engineer.pca.explained_variance_ratio_.sum():.3f}")
+        print(f"[OK] PCA fitted with explained variance: {feature_engineer.pca.explained_variance_ratio_.sum():.3f}")
 
     # Create dataloaders
     train_loader = DataLoader(

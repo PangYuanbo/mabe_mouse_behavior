@@ -1,0 +1,80 @@
+# V7 Training with V6 Logic - RTX 5090 Configuration
+# Frame-level classification with sliding windows
+
+# Data settings
+data_dir: 'C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle'
+use_kaggle_data: true
+
+# Mouse parameters
+num_mice: 4
+num_keypoints: 18
+
+# Model settings
+model_type: 'conv_bilstm'
+input_dim: 288  # 144 (coords) + 72 (speed) + 72 (accel) - will be auto-detected
+num_classes: 4  # 0: background, 1: social, 2: mating, 3: aggressive
+
+# Conv1DBiLSTM settings
+conv_channels: [64, 128, 256]
+lstm_hidden: 256
+lstm_layers: 2
+
+# Sequence settings
+sequence_length: 100  # Shorter sequences with sliding windows
+frame_gap: 1
+fps: 33.3
+
+# Training settings - RTX 5090 Optimized (32GB VRAM)
+epochs: 100
+batch_size: 768  # Very large batch for 5090 (2x384)
+learning_rate: 0.00056  # Adjusted for very large batch (sqrt scaling)
+weight_decay: 0.0001
+optimizer: 'adamw'
+grad_clip: 1.0
+
+# Warmup for stability
+warmup_epochs: 2
+
+# Loss settings
+loss: 'cross_entropy'
+class_weights: [1.0, 5.0, 8.0, 8.0]  # Balanced weights for rare behaviors
+label_smoothing: 0.0
+
+# Learning rate scheduler
+scheduler: 'plateau'
+scheduler_patience: 5
+scheduler_factor: 0.5
+min_lr: 0.00001
+
+# Data augmentation
+use_augmentation: true
+noise_std: 0.01
+temporal_jitter: 2
+
+# Regularization
+dropout: 0.3
+mixup_alpha: 0.0
+
+# Data loader settings - optimized for 5090
+num_workers: 0  # Set to 0 for Windows to avoid multiprocessing issues
+pin_memory: true
+prefetch_factor: 2
+
+# Checkpoint settings
+checkpoint_dir: 'checkpoints/v7_5090'
+save_freq: 5
+early_stopping_patience: 15
+
+# Device
+device: 'cuda'
+gpu_id: 0
+
+# Random seed
+seed: 42
+
+# Evaluation
+eval_metrics: ['accuracy', 'f1_macro', 'precision', 'recall']
+
+# Motion features
+use_motion_features: true
+motion_fps: 33.3

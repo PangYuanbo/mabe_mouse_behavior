@@ -2,6 +2,44 @@
 
 基于 Kaggle MABe 鼠标行为检测竞赛的训练框架。
 
+## 🎯 最新版本: V7 Interval Detection (2025-10-01) ⭐
+
+**V7采用全新的时序动作检测方法**，直接预测行为区间，并结合Motion Features。
+
+**快速开始V7**:
+```bash
+# 测试Motion Features
+python test_v7_motion_features.py
+
+# 训练 (RTX 5090优化, batch=32, FP16)
+python train_v7_local.py --config configs/config_v7_5090.yaml
+```
+
+**V7关键特性**:
+- ✅ **区间检测**: 直接预测行为区间，与比赛格式一致
+- ✅ **Motion Features**: 速度+加速度特征 (284维)
+- ✅ **IoU Loss**: 直接优化区间边界精度
+- ✅ **RTX 5090优化**: FP16混合精度，batch=32-48
+- ✅ **预期F1**: 0.45-0.50 (vs V6的0.4332)
+
+**完整文档**:
+- 📖 **[从这里开始 →](README_START_HERE.md)** - 完整训练流程 ⭐
+- 📖 [V7优化指南](V7_OPTIMIZATION_GUIDE.md) - 配置、优化、故障排查
+- 📖 [V7技术总结](V7_SUMMARY.md) - 实现细节、对比分析
+- 📖 [开始训练](START_TRAINING.md) - 快速开始指南
+- 📖 [V7更新日志](V7_CHANGELOG.md) - 所有改动记录
+
+**V6 vs V7**:
+| 特性 | V6 (逐帧分类) | V7 (区间检测) |
+|------|--------------|---------------|
+| 方法 | Frame classification | **Interval detection** ⭐ |
+| 优化目标 | 帧准确率 | **区间IoU** |
+| 输入 | 288维 (coords+motion) | 284维 (coords+motion) |
+| Batch (5090) | 96 | 32-48 |
+| F1 Score | 0.4332 | **0.45-0.50 (预期)** |
+
+---
+
 ## 项目结构
 
 ```
