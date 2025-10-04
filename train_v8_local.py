@@ -13,9 +13,19 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from versions.v8_fine_grained.v8_dataset import create_v8_dataloaders
+from versions.v8_fine_grained.v8_dataset import create_v8_dataloaders, V8Dataset
 from versions.v8_fine_grained.v8_model import V8BehaviorDetector, V8MultiTaskLoss
-from versions.v8_fine_grained.action_mapping import NUM_ACTIONS
+from versions.v8_fine_grained.action_mapping import NUM_ACTIONS, ID_TO_ACTION
+from versions.v8_fine_grained.submission_utils import predictions_to_intervals, evaluate_intervals
+from versions.v8_fine_grained.advanced_postprocessing import (
+    temporal_smoothing,
+    probs_to_intervals_advanced
+)
+from src.utils.detailed_metrics import (
+    compute_per_class_metrics,
+    compute_interval_per_class_f1,
+    print_detailed_metrics
+)
 
 
 def train_epoch(model, train_loader, criterion, optimizer, device, scaler=None):
@@ -108,7 +118,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, scaler=None):
 
 
 @torch.no_grad()
-def validate(model, val_loader, criterion, device):
+def validate(model, val_loader, criterion, device, compute_interval_f1=False, use_advanced_postproc=False):
     """Validate model"""
     model.eval()
 
@@ -121,6 +131,19 @@ def validate(model, val_loader, criterion, device):
     agent_correct = 0
     target_correct = 0
     total_samples = 0
+
+    # For interval F1 computation
+    all_action_preds = []
+    all_agent_preds = []
+    all_target_preds = []
+    all_action_labels = []
+    all_agent_labels = []
+    all_target_labels = []
+
+    # For advanced postprocessing (collect probabilities)
+    all_action_probs = []
+    all_agent_probs = []
+    all_target_probs = []
 
     for keypoints, action, agent, target in tqdm(val_loader, desc="Validation"):
         keypoints = keypoints.to(device)
@@ -151,12 +174,27 @@ def validate(model, val_loader, criterion, device):
         total_agent_loss += loss_dict['agent']
         total_target_loss += loss_dict['target']
 
+        # Collect predictions for interval F1
+        if compute_interval_f1:
+            all_action_preds.append(action_pred.cpu().numpy())
+            all_agent_preds.append(agent_pred.cpu().numpy())
+            all_target_preds.append(target_pred.cpu().numpy())
+            all_action_labels.append(action.cpu().numpy())
+            all_agent_labels.append(agent.cpu().numpy())
+            all_target_labels.append(target.cpu().numpy())
+
+            # Collect probabilities for advanced postprocessing
+            if use_advanced_postproc:
+                all_action_probs.append(torch.softmax(action_logits, dim=-1).cpu().numpy())
+                all_agent_probs.append(torch.softmax(agent_logits, dim=-1).cpu().numpy())
+                all_target_probs.append(torch.softmax(target_logits, dim=-1).cpu().numpy())
+
     avg_loss = total_loss / len(val_loader)
     action_acc = action_correct / total_samples
     agent_acc = agent_correct / total_samples
     target_acc = target_correct / total_samples
 
-    return {
+    metrics = {
         'loss': avg_loss,
         'action_loss': total_action_loss / len(val_loader),
         'agent_loss': total_agent_loss / len(val_loader),
@@ -165,6 +203,85 @@ def validate(model, val_loader, criterion, device):
         'agent_acc': agent_acc,
         'target_acc': target_acc
     }
+
+    # Compute detailed metrics if requested
+    if compute_interval_f1:
+        # Concatenate all predictions (flatten batch dimension)
+        action_preds_flat = np.concatenate(all_action_preds, axis=0).flatten()
+        agent_preds_flat = np.concatenate(all_agent_preds, axis=0).flatten()
+        target_preds_flat = np.concatenate(all_target_preds, axis=0).flatten()
+        action_labels_flat = np.concatenate(all_action_labels, axis=0).flatten()
+        agent_labels_flat = np.concatenate(all_agent_labels, axis=0).flatten()
+        target_labels_flat = np.concatenate(all_target_labels, axis=0).flatten()
+
+        # 1. Per-class frame-level metrics
+        frame_class_metrics = compute_per_class_metrics(
+            action_preds_flat,
+            action_labels_flat,
+            num_classes=NUM_ACTIONS
+        )
+        metrics['frame_class_metrics'] = frame_class_metrics
+
+        # 2. Convert to intervals
+        if use_advanced_postproc:
+            # Advanced postprocessing pipeline
+            print("  [Postproc] Using advanced postprocessing...")
+
+            # Concatenate probabilities
+            action_probs_concat = np.concatenate(all_action_probs, axis=0)  # [N, T, C]
+            agent_probs_concat = np.concatenate(all_agent_probs, axis=0)
+            target_probs_concat = np.concatenate(all_target_probs, axis=0)
+
+            # Flatten batch dimension
+            action_probs_flat = action_probs_concat.reshape(-1, action_probs_concat.shape[-1])
+            agent_probs_flat = agent_probs_concat.reshape(-1, agent_probs_concat.shape[-1])
+            target_probs_flat = target_probs_concat.reshape(-1, target_probs_concat.shape[-1])
+
+            # Temporal smoothing
+            action_probs_smooth = temporal_smoothing(action_probs_flat, kernel_size=5, method='median')
+            agent_probs_smooth = temporal_smoothing(agent_probs_flat, kernel_size=5, method='median')
+            target_probs_smooth = temporal_smoothing(target_probs_flat, kernel_size=5, method='median')
+
+            # Convert to intervals with advanced postprocessing
+            pred_intervals = probs_to_intervals_advanced(
+                action_probs=action_probs_smooth,
+                agent_probs=agent_probs_smooth,
+                target_probs=target_probs_smooth,
+                action_names=ID_TO_ACTION,
+                keypoints=None  # No velocity filtering during training validation
+            )
+        else:
+            # Basic postprocessing (argmax + simple filtering)
+            pred_intervals = predictions_to_intervals(
+                action_preds=action_preds_flat,
+                agent_preds=agent_preds_flat,
+                target_preds=target_preds_flat,
+                min_duration=5
+            )
+
+        gt_intervals = predictions_to_intervals(
+            action_preds=action_labels_flat,
+            agent_preds=agent_labels_flat,
+            target_preds=target_labels_flat,
+            min_duration=1  # No filtering for ground truth
+        )
+
+        # 3. Overall interval F1
+        interval_metrics = evaluate_intervals(pred_intervals, gt_intervals, iou_threshold=0.5)
+        metrics['interval_f1'] = interval_metrics['f1']
+        metrics['interval_precision'] = interval_metrics['precision']
+        metrics['interval_recall'] = interval_metrics['recall']
+
+        # 4. Per-class interval F1
+        interval_class_metrics = compute_interval_per_class_f1(
+            pred_intervals,
+            gt_intervals,
+            num_classes=NUM_ACTIONS,
+            iou_threshold=0.5
+        )
+        metrics['interval_class_metrics'] = interval_class_metrics
+
+    return metrics
 
 
 def main():
@@ -265,8 +382,14 @@ def main():
         # Train
         train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, scaler)
 
-        # Validate
-        val_metrics = validate(model, val_loader, criterion, device)
+        # Validate (compute interval F1 every 5 epochs)
+        compute_f1 = (epoch % 5 == 0)
+        use_advanced = config.get('use_advanced_postprocessing', False)
+        val_metrics = validate(
+            model, val_loader, criterion, device,
+            compute_interval_f1=compute_f1,
+            use_advanced_postproc=use_advanced
+        )
 
         # Print metrics
         print(f"\n[Train] Loss: {train_metrics['loss']:.4f} | "
@@ -274,10 +397,28 @@ def main():
               f"Agent Acc: {train_metrics['agent_acc']:.4f} | "
               f"Target Acc: {train_metrics['target_acc']:.4f}")
 
-        print(f"[Val]   Loss: {val_metrics['loss']:.4f} | "
-              f"Action Acc: {val_metrics['action_acc']:.4f} | "
-              f"Agent Acc: {val_metrics['agent_acc']:.4f} | "
-              f"Target Acc: {val_metrics['target_acc']:.4f}")
+        if 'interval_f1' in val_metrics:
+            print(f"[Val]   Loss: {val_metrics['loss']:.4f} | "
+                  f"Action Acc: {val_metrics['action_acc']:.4f} | "
+                  f"Agent Acc: {val_metrics['agent_acc']:.4f} | "
+                  f"Target Acc: {val_metrics['target_acc']:.4f}")
+            print(f"[Kaggle] Interval F1: {val_metrics['interval_f1']:.4f} | "
+                  f"Precision: {val_metrics['interval_precision']:.4f} | "
+                  f"Recall: {val_metrics['interval_recall']:.4f}")
+
+            # Print detailed per-class metrics
+            if 'frame_class_metrics' in val_metrics and 'interval_class_metrics' in val_metrics:
+                print_detailed_metrics(
+                    frame_metrics=val_metrics['frame_class_metrics'],
+                    interval_metrics=val_metrics['interval_class_metrics'],
+                    action_names=ID_TO_ACTION,
+                    top_k=15  # Show top 15 classes
+                )
+        else:
+            print(f"[Val]   Loss: {val_metrics['loss']:.4f} | "
+                  f"Action Acc: {val_metrics['action_acc']:.4f} | "
+                  f"Agent Acc: {val_metrics['agent_acc']:.4f} | "
+                  f"Target Acc: {val_metrics['target_acc']:.4f}")
 
         # Save best model
         if val_metrics['action_acc'] > best_val_acc:
@@ -288,6 +429,9 @@ def main():
         else:
             patience_counter += 1
 
+        # Always save latest model
+        torch.save(model.state_dict(), checkpoint_dir / 'last_model.pth')
+        
         # Early stopping
         if patience_counter >= config.get('early_stopping_patience', 20):
             print(f"\n[X] Early stopping triggered (patience={patience_counter})")
