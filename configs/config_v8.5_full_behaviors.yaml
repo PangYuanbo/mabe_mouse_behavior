@@ -1,0 +1,120 @@
+# V8.5 Full Behaviors Configuration
+# ALL 37 behaviors included (not just 27 like V8/V8.1)
+# Competition-compliant: "identify over 30 different social and non-social behaviors"
+
+# Data settings
+data_dir: 'C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle'
+use_kaggle_data: true
+
+# Mouse parameters
+num_mice: 4
+num_keypoints: 7
+
+# Model settings
+model_type: 'v8.5_multitask'
+input_dim: 112  # 56 coords + 28 speeds + 28 accels
+num_actions: 38  # V8.5: 0=background + 37 behaviors (was 28 in V8)
+
+# V8.5 architecture (same as V8, just different output dimension)
+conv_channels: [128, 256, 512]
+lstm_hidden: 256
+lstm_layers: 2
+dropout: 0.0
+
+# Sequence settings
+sequence_length: 100
+stride: 25
+frame_gap: 1
+fps: 33.3
+
+# Training settings
+epochs: 100
+batch_size: 256  # RTX 5090 can handle this
+learning_rate: 0.00005
+weight_decay: 0.0001
+optimizer: 'adamw'
+grad_clip: 1.0
+
+# Warmup
+warmup_epochs: 5
+
+# Multi-task loss weights
+action_loss_weight: 1.0
+agent_loss_weight: 0.3
+target_loss_weight: 0.3
+
+# Focal Loss (critical for handling class imbalance with 38 classes!)
+use_focal_loss: true
+focal_gamma: 1.5
+
+# V8.5: Class weights for severe imbalance
+# Weights computed based on inverse frequency
+# Very rare behaviors (ejaculate=3 intervals, biteobject=33) get high weights
+use_class_weights: true
+class_weight_strategy: 'inverse_sqrt_freq'  # Options: 'inverse_freq', 'inverse_sqrt_freq', 'balanced'
+
+# Learning rate scheduler
+scheduler: 'cosine'
+min_lr: 0.000005
+
+# Data augmentation (disabled for now)
+use_augmentation: false
+noise_std: 0.0
+temporal_jitter: 0
+
+# Data loader
+num_workers: 0
+pin_memory: true
+
+# Checkpoint
+checkpoint_dir: 'checkpoints/v8.5_full_behaviors'
+early_stopping_patience: 20
+
+# Device
+device: 'cuda'
+use_amp: false  # Mixed precision (disable if issues)
+
+# Motion features
+use_motion_features: true
+motion_fps: 33.3
+
+# Advanced postprocessing (inherit from V8.1)
+use_advanced_postprocessing: true
+postproc_version: 'v8.5'  # V8.5-specific postprocessing
+postproc_smoothing_kernel: 3
+postproc_boundary_refinement: true
+
+# V8.5 specific: Per-behavior minimum durations
+# Different behaviors have different typical lengths
+adaptive_min_duration: true
+min_duration_config:
+  # Brief behaviors
+  ejaculate: 2
+  flinch: 2
+  biteobject: 2
+
+  # Short behaviors
+  sniff: 3
+  sniffgenital: 3
+  sniffbody: 3
+  sniffface: 3
+  approach: 3
+  selfgroom: 3
+
+  # Medium behaviors
+  mount: 4
+  attack: 4
+  chase: 4
+  escape: 4
+  avoid: 4
+
+  # Long behaviors
+  intromit: 5
+  rest: 5
+  huddle: 5
+
+  # Default for others
+  default: 3
+
+# Seed
+seed: 42

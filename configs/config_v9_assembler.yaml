@@ -1,0 +1,62 @@
+# V9 Interval Assembler Configuration
+# Trains boundary detection heads on top of frozen V8
+
+# Data settings
+data_dir: 'C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle'
+use_kaggle_data: true
+
+# V8 Checkpoint (frozen feature extractor)
+v8_checkpoint: 'checkpoints/v8_5090/best_model.pth'
+
+# V8 Model Configuration (must match checkpoint)
+v8_config:
+  input_dim: 112
+  num_mice: 4
+  conv_channels: [128, 256, 512]
+  lstm_hidden: 256
+  lstm_layers: 2
+  dropout: 0.0
+
+# V9 Assembler Settings
+encoder_type: 'bilstm'  # 'bilstm' or 'tcn'
+encoder_hidden: 256
+encoder_layers: 2
+freeze_v8: true  # Keep V8 frozen
+
+# Sequence settings
+sequence_length: 100
+stride: 50  # 50% overlap (faster training, still good coverage)
+boundary_sigma: 2.0  # Gaussian smoothing for boundary labels
+
+# Training settings
+epochs: 50
+batch_size: 128  # RTX 5090 optimization (30GB VRAM)
+learning_rate: 0.003  # Higher LR for larger batch size
+weight_decay: 0.0001
+min_lr: 0.00001
+
+# Loss weights
+boundary_weight: 1.0
+iou_weight: 0.5  # Disabled during training (too slow), enabled for validation
+consistency_weight: 0.1
+fragment_weight: 0.05
+focal_alpha: 0.25
+focal_gamma: 2.0
+
+# Optimizer & Scheduler
+optimizer: 'adamw'
+scheduler: 'cosine'
+
+# Data loader
+num_workers: 0
+pin_memory: true
+
+# Checkpoint
+checkpoint_dir: 'checkpoints/v9_assembler'
+early_stopping_patience: 15
+
+# Device
+device: 'cuda'
+
+# Seed
+seed: 42

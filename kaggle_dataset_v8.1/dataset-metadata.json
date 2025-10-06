@@ -1,0 +1,15 @@
+{
+  "title": "MABe V8.1 Optimized Model Checkpoint",
+  "id": "yuanbopang/mabe-v8-1-model",
+  "licenses": [
+    {
+      "name": "CC0-1.0"
+    }
+  ],
+  "resources": [
+    {
+      "path": "best_model.pth",
+      "description": "V8.1 Optimized Model - Best Kaggle F1 checkpoint with motion gating and fine-tuned thresholds"
+    }
+  ]
+}

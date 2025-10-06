@@ -1,0 +1,17 @@
+{
+  "id": "yuanbopang/v8-mabe-multitask-submission",
+  "title": "V8 MABe Multitask Submission",
+  "code_file": "kaggle_submission_v8.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": false,
+  "dataset_sources": [
+    "yuanbopang/mabe-v8-model"
+  ],
+  "competition_sources": [
+    "MABe-mouse-behavior-detection"
+  ],
+  "kernel_sources": []
+}

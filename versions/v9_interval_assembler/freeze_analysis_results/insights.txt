@@ -1,0 +1,26 @@
+FREEZE vs BACKGROUND ANALYSIS
+================================================================================
+
+1. Freeze has 64.2% lower average velocity than background
+   Freeze: 40.45 px/s, Background: 112.87 px/s
+   -> Suggested velocity threshold for freeze: < 92.22 px/s
+
+2. Inter-mouse distance:
+   Freeze: 0.00 px, Background: 0.00 px
+
+3. Features with large effect sizes (|Cohen's d| > 0.5):
+   - agent_velocity: Cohen's d = -1.265
+   - target_velocity: Cohen's d = -1.265
+   - overall_velocity: Cohen's d = -0.852
+
+================================================================================
+RECOMMENDATIONS:
+================================================================================
+
+1. Add velocity gating in postprocessing:
+   - Filter freeze predictions to require agent_velocity < 92.22 px/s
+   - Consider target velocity as well
+
+2. Increase freeze class weight in training loss
+3. Add hard negative mining for background confusion
+4. Consider adding explicit velocity features to model input

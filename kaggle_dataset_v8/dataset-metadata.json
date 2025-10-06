@@ -1,0 +1,15 @@
+{
+  "title": "MABe V8 Model Checkpoint",
+  "id": "yuanbopang/mabe-v8-model",
+  "licenses": [
+    {
+      "name": "CC0-1.0"
+    }
+  ],
+  "resources": [
+    {
+      "path": "last_model.pth",
+      "description": "V8 Multi-task Model - Best checkpoint (Val Acc: 86.31%)"
+    }
+  ]
+}

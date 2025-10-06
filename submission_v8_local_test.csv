@@ -1,0 +1,5 @@
+row_id,video_id,agent_id,target_id,action,start_frame,stop_frame
+0,438887472,mouse2,mouse4,attack,1390,1395
+1,438887472,mouse2,mouse4,attack,1404,1414
+2,438887472,mouse2,mouse4,attack,1442,1448
+3,438887472,mouse2,mouse1,attack,1449,1453

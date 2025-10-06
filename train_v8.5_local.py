@@ -1,6 +1,14 @@
 """
-V8 Training Script - Multi-task Fine-grained Behavior Detection
-Run: python train_v8_local.py --config configs/config_v8_5090.yaml
+V8.5 Training Script - Full Behavior Coverage (ALL 37 behaviors)
+
+Key improvements over V8/V8.1:
+1. Predicts ALL 37 behaviors (not just 27)
+2. Includes non-social behaviors (rear, selfgroom, dig, climb, etc.)
+3. Removed 'bite' (not in training data)
+4. NUM_ACTIONS = 38 (0=background + 37 behaviors)
+5. Competition-compliant: "identify over 30 different social and non-social behaviors"
+
+Run: python train_v8.5_local.py --config configs/config_v8.5_full_behaviors.yaml
 """
 
 import torch
@@ -13,11 +21,11 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from versions.v8_fine_grained.v8_dataset import create_v8_dataloaders, V8Dataset
-from versions.v8_fine_grained.v8_model import V8BehaviorDetector, V8MultiTaskLoss
-from versions.v8_fine_grained.action_mapping import NUM_ACTIONS, ID_TO_ACTION
+from versions.v8_5_full_behaviors.v8_5_dataset import create_v85_dataloaders
+from versions.v8_5_full_behaviors.v8_5_model import V85BehaviorDetector, V85MultiTaskLoss
+from versions.v8_5_full_behaviors.action_mapping import NUM_ACTIONS, ID_TO_ACTION, FREQUENCY_GROUPS
 from versions.v8_fine_grained.submission_utils import predictions_to_intervals, evaluate_intervals
-from versions.v8_fine_grained.advanced_postprocessing import (
+from versions.v8_1_optimized_postproc.advanced_postprocessing import (
     temporal_smoothing,
     probs_to_intervals_advanced
 )
@@ -26,6 +34,63 @@ from src.utils.detailed_metrics import (
     compute_interval_per_class_f1,
     print_detailed_metrics
 )
+
+
+def compute_class_weights(train_loader, num_classes, strategy='inverse_sqrt_freq', device='cuda'):
+    """
+    Compute class weights based on label distribution
+
+    Args:
+        train_loader: DataLoader
+        num_classes: Number of classes (38 for V8.5)
+        strategy: 'inverse_freq', 'inverse_sqrt_freq', or 'balanced'
+        device: torch device
+
+    Returns:
+        class_weights: [num_classes] tensor
+    """
+    print(f"  Computing class weights (strategy={strategy})...")
+
+    # Count occurrences of each class
+    class_counts = np.zeros(num_classes, dtype=np.int64)
+
+    for keypoints, action, agent, target in tqdm(train_loader, desc="Counting classes"):
+        action_np = action.cpu().numpy().flatten()
+        for class_id in range(num_classes):
+            class_counts[class_id] += (action_np == class_id).sum()
+
+    total = class_counts.sum()
+
+    print(f"\n  Class distribution:")
+    for class_id in range(min(10, num_classes)):  # Show first 10
+        action_name = ID_TO_ACTION.get(class_id, f'class_{class_id}')
+        pct = class_counts[class_id] / total * 100
+        print(f"    [{class_id:2d}] {action_name:20s}: {class_counts[class_id]:10,} ({pct:5.2f}%)")
+    print(f"    ... (showing 10/{num_classes} classes)")
+
+    # Compute weights
+    if strategy == 'inverse_freq':
+        # weight = total / count
+        weights = total / (class_counts + 1)  # +1 to avoid division by zero
+    elif strategy == 'inverse_sqrt_freq':
+        # weight = sqrt(total / count)
+        weights = np.sqrt(total / (class_counts + 1))
+    elif strategy == 'balanced':
+        # weight = total / (num_classes * count)
+        weights = total / (num_classes * (class_counts + 1))
+    else:
+        raise ValueError(f"Unknown strategy: {strategy}")
+
+    # Normalize weights so that they sum to num_classes
+    weights = weights / weights.mean()
+
+    # Convert to tensor
+    class_weights = torch.FloatTensor(weights).to(device)
+
+    print(f"\n  Weight range: [{class_weights.min():.2f}, {class_weights.max():.2f}]")
+    print(f"  Weight mean: {class_weights.mean():.2f}")
+
+    return class_weights
 
 
 def train_epoch(model, train_loader, criterion, optimizer, device, scaler=None):
@@ -285,8 +350,8 @@ def validate(model, val_loader, criterion, device, compute_interval_f1=False, us
 
 
 def main():
-    parser = argparse.ArgumentParser(description='V8 Multi-task Training')
-    parser.add_argument('--config', type=str, default='configs/config_v8_5090.yaml')
+    parser = argparse.ArgumentParser(description='V8.5 Full Behavior Coverage Training')
+    parser.add_argument('--config', type=str, default='configs/config_v8.5_full_behaviors.yaml')
     args = parser.parse_args()
 
     # Load config
@@ -297,16 +362,18 @@ def main():
     device = torch.device(config.get('device', 'cuda') if torch.cuda.is_available() else 'cpu')
 
     print("="*60)
-    print("V8 Multi-task Fine-grained Behavior Detection")
+    print("V8.5 Full Behavior Coverage Training")
+    print("ALL 37 Behaviors (Not Just 27 Like V8/V8.1)")
     print("="*60)
     print(f"Device: {device}")
     if device.type == 'cuda':
         print(f"GPU: {torch.cuda.get_device_name(0)}")
         print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    print(f"NUM_ACTIONS: {NUM_ACTIONS} (0=background + 37 behaviors)")
 
     # Create dataloaders
     print(f"\nLoading data...")
-    train_loader, val_loader = create_v8_dataloaders(
+    train_loader, val_loader = create_v85_dataloaders(
         data_dir=config['data_dir'],
         batch_size=config['batch_size'],
         sequence_length=config['sequence_length'],
@@ -324,10 +391,10 @@ def main():
     print(f"[OK] Input dimension: {input_dim}")
 
     # Build model
-    print(f"\nBuilding V8 model...")
-    model = V8BehaviorDetector(
+    print(f"\nBuilding V8.5 model...")
+    model = V85BehaviorDetector(
         input_dim=input_dim,
-        num_actions=NUM_ACTIONS,
+        num_actions=NUM_ACTIONS,  # 38 in V8.5
         num_mice=config['num_mice'],
         conv_channels=config['conv_channels'],
         lstm_hidden=config['lstm_hidden'],
@@ -338,13 +405,24 @@ def main():
     total_params = sum(p.numel() for p in model.parameters())
     print(f"[OK] Total parameters: {total_params:,}")
 
+    # Compute class weights
+    class_weights = None
+    if config.get('use_class_weights', False):
+        class_weights = compute_class_weights(
+            train_loader,
+            NUM_ACTIONS,
+            strategy=config.get('class_weight_strategy', 'inverse_sqrt_freq'),
+            device=device
+        )
+
     # Loss function
-    criterion = V8MultiTaskLoss(
+    criterion = V85MultiTaskLoss(
         action_weight=config.get('action_loss_weight', 1.0),
         agent_weight=config.get('agent_loss_weight', 0.3),
         target_weight=config.get('target_loss_weight', 0.3),
         use_focal=config.get('use_focal_loss', True),
-        focal_gamma=config.get('focal_gamma', 2.0)
+        focal_gamma=config.get('focal_gamma', 2.0),
+        class_weights=class_weights
     )
 
     # Optimizer
@@ -362,13 +440,14 @@ def main():
     )
 
     # Mixed precision
-    scaler = torch.cuda.amp.GradScaler() if config.get('use_amp', True) else None
+    scaler = torch.cuda.amp.GradScaler() if config.get('use_amp', False) else None
 
     # Training loop
     checkpoint_dir = Path(config['checkpoint_dir'])
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
 
     best_val_acc = 0
+    best_kaggle_f1 = 0
     patience_counter = 0
 
     print(f"\nStarting training for {config['epochs']} epochs...")
@@ -382,8 +461,8 @@ def main():
         # Train
         train_metrics = train_epoch(model, train_loader, criterion, optimizer, device, scaler)
 
-        # Validate (compute interval F1 every 5 epochs)
-        compute_f1 = (epoch % 5 == 0)
+        # Validate (compute Kaggle interval F1 every epoch)
+        compute_f1 = True
         use_advanced = config.get('use_advanced_postprocessing', False)
         val_metrics = validate(
             model, val_loader, criterion, device,
@@ -412,7 +491,7 @@ def main():
                     frame_metrics=val_metrics['frame_class_metrics'],
                     interval_metrics=val_metrics['interval_class_metrics'],
                     action_names=ID_TO_ACTION,
-                    top_k=15  # Show top 15 classes
+                    top_k=20  # Show top 20 (more than V8 since we have 37)
                 )
         else:
             print(f"[Val]   Loss: {val_metrics['loss']:.4f} | "
@@ -420,18 +499,28 @@ def main():
                   f"Agent Acc: {val_metrics['agent_acc']:.4f} | "
                   f"Target Acc: {val_metrics['target_acc']:.4f}")
 
-        # Save best model
+        # Save best model based on frame-level accuracy
         if val_metrics['action_acc'] > best_val_acc:
             best_val_acc = val_metrics['action_acc']
-            torch.save(model.state_dict(), checkpoint_dir / 'best_model.pth')
-            print(f"\n[OK] Saved best model (val_acc={best_val_acc:.4f})")
-            patience_counter = 0
+            torch.save(model.state_dict(), checkpoint_dir / 'best_model_acc.pth')
+            print(f"\n[OK] Saved best accuracy model (val_acc={best_val_acc:.4f})")
+
+        # Save best model based on Kaggle F1 score
+        if 'interval_f1' in val_metrics:
+            current_f1 = val_metrics['interval_f1']
+            if current_f1 > best_kaggle_f1:
+                best_kaggle_f1 = current_f1
+                torch.save(model.state_dict(), checkpoint_dir / 'best_model.pth')
+                print(f"[OK] Saved best Kaggle F1 model (kaggle_f1={best_kaggle_f1:.4f})")
+                patience_counter = 0
+            else:
+                patience_counter += 1
         else:
             patience_counter += 1
 
         # Always save latest model
         torch.save(model.state_dict(), checkpoint_dir / 'last_model.pth')
-        
+
         # Early stopping
         if patience_counter >= config.get('early_stopping_patience', 20):
             print(f"\n[X] Early stopping triggered (patience={patience_counter})")
@@ -443,7 +532,10 @@ def main():
     print(f"\n{'='*60}")
     print(f"[OK] Training complete!")
     print(f"  Best Val Action Acc: {best_val_acc:.4f}")
-    print(f"  Checkpoint: {checkpoint_dir / 'best_model.pth'}")
+    print(f"  Best Kaggle F1: {best_kaggle_f1:.4f}")
+    print(f"  Best Kaggle model: {checkpoint_dir / 'best_model.pth'}")
+    print(f"  Best accuracy model: {checkpoint_dir / 'best_model_acc.pth'}")
+    print(f"  Latest model: {checkpoint_dir / 'last_model.pth'}")
     print(f"{'='*60}\n")
 
 

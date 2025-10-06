@@ -1,0 +1,80 @@
+# V8 Safe Configuration - Prevent NaN Loss
+# Conservative settings for stable training
+
+# Data settings
+data_dir: 'C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle'
+use_kaggle_data: true
+
+# Mouse parameters
+num_mice: 4
+num_keypoints: 7
+
+# Model settings
+model_type: 'v8_multitask'
+input_dim: 112
+num_actions: 28
+
+# V8 architecture - REDUCED for stability
+conv_channels: [128, 256, 512]
+lstm_hidden: 256
+lstm_layers: 2
+dropout: 0.0  # No dropout - large dataset + BN is enough
+
+# Sequence settings
+sequence_length: 100
+stride: 25
+frame_gap: 1
+fps: 33.3
+
+# Training settings - CONSERVATIVE
+epochs: 100
+batch_size: 256  # Reduced from 512
+learning_rate: 0.00005  # Further reduced
+weight_decay: 0.0001
+optimizer: 'adamw'
+grad_clip: 1.0
+
+# Warmup
+warmup_epochs: 5  # More warmup
+
+# Multi-task loss weights
+action_loss_weight: 1.0
+agent_loss_weight: 0.3
+target_loss_weight: 0.3
+
+# Focal Loss - REDUCED gamma
+use_focal_loss: true
+focal_gamma: 1.5  # Lower gamma = less aggressive
+
+# Learning rate scheduler
+scheduler: 'cosine'
+min_lr: 0.000005
+
+# Data augmentation - MINIMAL
+use_augmentation: false  # Disable for stability
+noise_std: 0.0
+temporal_jitter: 0
+
+# Data loader
+num_workers: 0
+pin_memory: true
+
+# Checkpoint
+checkpoint_dir: 'checkpoints/v8_5090_safe'
+early_stopping_patience: 20
+
+# Device
+device: 'cuda'
+use_amp: false  # NO mixed precision
+
+# Motion features
+use_motion_features: true
+motion_fps: 33.3
+
+# Advanced postprocessing (NEW!)
+use_advanced_postprocessing: true
+postproc_smoothing_kernel: 5
+postproc_boundary_refinement: true
+
+# Seed
+seed: 42

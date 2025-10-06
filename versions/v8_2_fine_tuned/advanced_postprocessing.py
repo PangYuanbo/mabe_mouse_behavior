@@ -99,10 +99,10 @@ CLASS_CONFIG = {
 
     # Other social behaviors
     'freeze': {
-        'min_duration': 3,
-        'prob_threshold': 0.25,  # will be relaxed to 0.20 if velocity < threshold
-        'merge_gap': 3,
-        'velocity_max': 7.0  # V8.1: px/s, low-speed requirement
+        'min_duration': 5,  # V8.2: Increased from 3 for better quality
+        'prob_threshold': 0.20,  # V8.2: Lowered from 0.25 (rely on velocity filter)
+        'merge_gap': 5,  # V8.2: Increased from 3 for better segment merging
+        'velocity_max': 92.22  # V8.2: Data-driven threshold (freeze_mean + 1.5*std), covers 93% of freeze
     },
     'approach': {
         'min_duration': 4,
@@ -369,11 +369,11 @@ def motion_gating_filter(
     fps: float = 33.3
 ) -> List[Dict]:
     """
-    V8.1: Motion-gated filtering for velocity-dependent behaviors
+    V8.2: Enhanced motion-gated filtering for velocity-dependent behaviors
 
     Applies velocity thresholds for:
-    - escape/chase: require high speed (velocity_min)
-    - freeze: require low speed (velocity_max), relax prob threshold if met
+    - escape/chase: require high speed (velocity_min) for agent
+    - freeze: require low speed (velocity_max) for BOTH agent AND target
 
     Args:
         intervals: List of intervals
@@ -401,56 +401,74 @@ def motion_gating_filter(
             filtered.append(interval)
             continue
 
-        # Compute agent velocity in this segment
+        # Get interval boundaries
         start = interval.get('start') if interval.get('start') is not None else interval.get('start_frame')
         end = interval.get('end') if interval.get('end') is not None else interval.get('stop_frame')
         agent_id = interval['agent_id']
+        target_id = interval['target_id']
 
-        # Extract agent keypoints (7 bodyparts × 2 coords = 14 dims)
-        # keypoints format: [T, 56] = [T, 4_mice * 7_bodyparts * 2_coords]
-        agent_start_col = agent_id * 14
-        agent_end_col = agent_start_col + 14
+        # Helper function to compute velocity for a mouse
+        def compute_mouse_velocity(mouse_id, start_frame, end_frame):
+            """Compute average velocity for a mouse over a frame range"""
+            # Extract mouse keypoints (7 bodyparts × 2 coords = 14 dims)
+            # keypoints format: [T, 56] = [T, 4_mice * 7_bodyparts * 2_coords]
+            mouse_start_col = mouse_id * 14
+            mouse_end_col = mouse_start_col + 14
 
-        if agent_end_col > keypoints.shape[1]:
-            # Keypoints may have motion features, use first 56 dims
-            agent_kps = keypoints[start:end+1, agent_start_col:min(agent_end_col, 56)]
-        else:
-            agent_kps = keypoints[start:end+1, agent_start_col:agent_end_col]
+            # Ensure we don't exceed bounds (keypoints should be [T, 56])
+            if mouse_end_col > 56 or mouse_end_col > keypoints.shape[1]:
+                return None
 
-        # Compute frame-to-frame displacement
-        if len(agent_kps) < 2:
-            # Too short, can't compute velocity reliably
-            filtered.append(interval)
+            mouse_kps = keypoints[start_frame:end_frame+1, mouse_start_col:mouse_end_col]
+
+            # Need at least 2 frames to compute velocity
+            if len(mouse_kps) < 2:
+                return None
+
+            # Compute frame-to-frame displacement (across all keypoints)
+            displacements = np.diff(mouse_kps, axis=0)  # [T-1, 14]
+            # For each frame, compute total displacement across all bodyparts
+            frame_displacements = np.linalg.norm(displacements, axis=1)  # [T-1]
+            avg_velocity = np.mean(frame_displacements) * fps  # px/s
+
+            return avg_velocity
+
+        # Compute velocities
+        agent_velocity = compute_mouse_velocity(agent_id, start, end)
+        target_velocity = compute_mouse_velocity(target_id, start, end)
+
+        if agent_velocity is None:
+            # Can't compute velocity, skip this interval
             continue
-
-        # Compute displacement (Euclidean distance of all keypoints)
-        displacements = np.diff(agent_kps, axis=0)  # [T-1, 14]
-        # For each frame, compute total displacement across all bodyparts
-        frame_displacements = np.linalg.norm(displacements.reshape(len(displacements), -1), axis=1)
-        avg_velocity = np.mean(frame_displacements) * fps  # px/s
 
         # Apply gating rules
         if velocity_min is not None:
             # High-speed behaviors (escape, chase)
-            if avg_velocity < velocity_min:
+            # Only check agent velocity for these
+            if agent_velocity < velocity_min:
                 continue  # Discard: too slow
 
         if velocity_max is not None:
             # Low-speed behaviors (freeze)
-            if avg_velocity <= velocity_max:
-                # V8.1: Relax prob threshold for genuine freeze
-                # If velocity is low, accept even lower probabilities
+            # V8.2: Check BOTH agent AND target velocities
+            agent_passes = agent_velocity <= velocity_max
+            target_passes = (target_velocity is None) or (target_velocity <= velocity_max)
+
+            if agent_passes and target_passes:
+                # Both mice are moving slowly - likely freeze
+                # V8.2: Relax prob threshold for genuine freeze
                 if action_probs is not None and action_name == 'freeze':
                     seg_probs = action_probs[start:end+1, action_id]
                     avg_prob = np.mean(seg_probs)
-                    if avg_prob >= 0.20:  # Relaxed threshold
+                    # Accept if probability >= 0.15 (relaxed from default 0.20)
+                    if avg_prob >= 0.15:
                         filtered.append(interval)
                         continue
                 else:
                     filtered.append(interval)
                     continue
             else:
-                # Too fast for freeze
+                # At least one mouse is moving too fast for freeze
                 continue
         else:
             # Only velocity_min was set, and it passed

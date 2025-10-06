@@ -74,9 +74,13 @@ versions/v8_fine_grained/
 ├── action_mapping.py            # 28类行为映射
 ├── v8_model.py                  # 多任务模型
 ├── v8_dataset.py                # 数据集（带agent/target标签）
-├── v8_trainer.py                # 多任务训练器
 ├── submission_utils.py          # Kaggle提交格式转换
-└── train_v8_local.py           # 训练脚本
+├── advanced_postprocessing.py   # 高级后处理
+├── train_v8.py                  # 训练脚本
+├── inference_v8.py              # 推理脚本
+├── inference_v8_improved.py     # 改进推理脚本
+├── test_v8.py                   # 组件测试
+└── test_postprocessing.py       # 后处理测试
 ```
 
 ## 快速开始
@@ -85,7 +89,7 @@ versions/v8_fine_grained/
 
 ```bash
 # RTX 5090 (32GB VRAM)
-python train_v8_local.py --config configs/config_v8_5090.yaml
+python versions/v8_fine_grained/train_v8.py --config configs/config_v8_5090.yaml
 
 # 关键配置
 batch_size: 512        # 5090优化

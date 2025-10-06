@@ -1,0 +1,85 @@
+# V8.2 Fine-Tuned Configuration
+# Key improvements:
+# 1. Validation smoothing kernel = 3 (better for short segments)
+# 2. Lower sniff* thresholds (0.25-0.28) for better recall
+# 3. Larger sniffbody merge_gap (8) for better merging
+# 4. Motion gating maintained (escape/chase/freeze)
+
+# Data settings
+data_dir: 'C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle'
+use_kaggle_data: true
+
+# Mouse parameters
+num_mice: 4
+num_keypoints: 7
+
+# Model settings (same as V8.1)
+model_type: 'v8_multitask'
+input_dim: 112
+num_actions: 28
+
+# V8 architecture
+conv_channels: [128, 256, 512]
+lstm_hidden: 256
+lstm_layers: 2
+dropout: 0.0
+
+# Sequence settings
+sequence_length: 100
+stride: 25
+frame_gap: 1
+fps: 33.3
+
+# Training settings
+epochs: 100
+batch_size: 256
+learning_rate: 0.00005
+weight_decay: 0.0001
+optimizer: 'adamw'
+grad_clip: 1.0
+
+# Warmup
+warmup_epochs: 5
+
+# Multi-task loss weights
+action_loss_weight: 1.0
+agent_loss_weight: 0.3
+target_loss_weight: 0.3
+
+# Focal Loss
+use_focal_loss: true
+focal_gamma: 1.5
+
+# Learning rate scheduler
+scheduler: 'cosine'
+min_lr: 0.000005
+
+# Data augmentation
+use_augmentation: false
+noise_std: 0.0
+temporal_jitter: 0
+
+# Data loader
+num_workers: 0
+pin_memory: true
+
+# Checkpoint
+checkpoint_dir: 'checkpoints/v8.2_fine_tuned'
+early_stopping_patience: 20
+
+# Device
+device: 'cuda'
+use_amp: false
+
+# Motion features
+use_motion_features: true
+motion_fps: 33.3
+
+# V8.2 Advanced postprocessing (FINE-TUNED!)
+use_advanced_postprocessing: true
+postproc_version: 'v8.2'  # Use V8.2 fine-tuned postprocessing
+postproc_smoothing_kernel: 3  # V8.2: Critical - changed from 5 to 3!
+postproc_boundary_refinement: true
+
+# Seed
+seed: 42

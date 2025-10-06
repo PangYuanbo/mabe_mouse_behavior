@@ -1,0 +1,77 @@
+# V8.6 MARS-Enhanced Configuration
+# =================================
+# MARS-inspired feature engineering + Multi-scale temporal modeling + Freeze detection
+
+dataset:
+  data_dir: "C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle"
+  sequence_length: 150  # 4.5 sec at 33.3 fps (longer than V8.5's 100)
+  stride: 37            # 25% overlap (~75% stride)
+  num_workers: 0
+  oversample_rare: true  # Oversample freeze, escape, etc. × 3
+  augment: true          # Coordinate noise, temporal jitter
+
+model:
+  input_dim: 370        # MARS features (~370 dims)
+  num_actions: 38       # 0=background + 37 behaviors
+  num_mice: 4
+  conv_channels: [192, 384, 512]  # Multi-scale conv channels
+  lstm_hidden: 384      # Increased from 256 in V8.5
+  lstm_layers: 3        # Increased from 2 in V8.5
+  dropout: 0.3
+  use_attention: true   # Self-attention after LSTM
+
+training:
+  batch_size: 128       # Smaller due to larger features/sequences
+  num_epochs: 100
+  learning_rate: 0.0001
+  weight_decay: 0.01
+
+  # Loss weights
+  action_weight: 1.0
+  agent_weight: 0.3
+  target_weight: 0.3
+  freeze_weight: 0.5    # NEW: Freeze detection weight
+
+  # Focal loss
+  use_focal: true
+  focal_gamma: 2.0
+
+  # Dynamic weighting
+  rare_boost: 3.0       # Boost rare behavior weights by 3x
+
+  # Training settings
+  use_mixed_precision: true
+  gradient_clip: 1.0
+  early_stopping_patience: 15
+
+  # Checkpoints
+  checkpoint_dir: "checkpoints/v8_6"
+  save_interval: 5
+
+# Hardware-specific settings (RTX 5090)
+hardware:
+  device: "cuda"
+  gpu_name: "NVIDIA GeForce RTX 5090"
+  vram_gb: 31.8
+  fp16: true
+
+# Expected improvements
+expected_metrics:
+  interval_f1_target: 0.35  # Up from V8.5's 0.255
+  freeze_f1_target: 0.15    # Up from V8.5's 0.0
+  overall_improvement: "+37%"
+
+# Feature details (for reference)
+feature_engineering:
+  total_dims: ~370
+  components:
+    raw_coords: 56          # 7 bodyparts × 4 mice × 2
+    joint_angles: 48        # 12 angles × 4 mice
+    body_orientation: 4     # 1 angle × 4 mice
+    velocity_speed: 28      # 28 keypoints
+    acceleration: 28        # 28 keypoints
+    jerk: 28                # Rate of accel change
+    angular_velocity: 4     # 4 mice
+    inter_mouse_dist: 42    # 7 bodyparts × 6 pairs
+    relative_positions: 48  # 12 features × 4 pairs
+    social_features: 24     # 6 features × 4 pairs
