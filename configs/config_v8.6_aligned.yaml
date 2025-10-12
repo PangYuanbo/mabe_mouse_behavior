@@ -1,0 +1,134 @@
+# V8.6 Configuration (Aligned with V8.5)
+# ===========================================
+# ONLY difference from V8.5: Model architecture with MARS features
+# Everything else (training strategy, hyperparameters) is IDENTICAL to V8.5
+
+# Data settings (SAME AS V8.5)
+data_dir: 'C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle'
+use_kaggle_data: true
+
+# Mouse parameters (SAME AS V8.5)
+num_mice: 4
+num_keypoints: 7
+
+# Model settings (CHANGED: MARS features)
+model_type: 'v8.6_multitask'
+input_dim: 370  # MARS features (V8.5: 112) - ONLY MAJOR DIFFERENCE
+num_actions: 38  # 0=background + 37 behaviors
+
+# V8.6 architecture (CHANGED: Larger model for richer features)
+conv_channels: [128, 256, 512]  # Same structure as V8.5
+lstm_hidden: 256                # Same as V8.5
+lstm_layers: 2                  # Same as V8.5
+dropout: 0.0                    # Same as V8.5
+
+# Sequence settings (SAME AS V8.5)
+sequence_length: 100
+stride: 25
+frame_gap: 1
+fps: 33.3
+
+# Training settings (SAME AS V8.5)
+epochs: 100
+batch_size: 256  # Same as V8.5 (RTX 5090 can handle it)
+learning_rate: 0.00005
+weight_decay: 0.0001
+optimizer: 'adamw'
+grad_clip: 1.0
+
+# Warmup (SAME AS V8.5)
+warmup_epochs: 5
+
+# Multi-task loss weights (SAME AS V8.5)
+action_loss_weight: 1.0
+agent_loss_weight: 0.3
+target_loss_weight: 0.3
+
+# Focal Loss (SAME AS V8.5)
+use_focal_loss: true
+focal_gamma: 1.5
+
+# Class weights (SAME AS V8.5 - DISABLED)
+use_class_weights: false
+# class_weight_strategy: 'inverse_sqrt_freq'  # Disabled
+
+# Learning rate scheduler (SAME AS V8.5)
+scheduler: 'cosine'
+min_lr: 0.000005
+
+# Data augmentation (ENABLED in V8.6 Aligned)
+use_augmentation: true
+coord_noise_std: 0.01  # Gaussian noise to coordinates (V8.6 feature)
+temporal_jitter: 0     # Disabled for aligned version
+
+# Data loader (SAME AS V8.5)
+num_workers: 0
+pin_memory: true
+
+# Checkpoint (CHANGED: Different directory)
+checkpoint_dir: 'checkpoints/v8.6_aligned'
+early_stopping_patience: 20
+
+# Device (SAME AS V8.5)
+device: 'cuda'
+use_amp: false
+
+# Motion features (SAME AS V8.5)
+use_motion_features: true
+motion_fps: 33.3
+
+# Advanced postprocessing (SAME AS V8.5)
+use_advanced_postprocessing: true
+postproc_version: 'v8.6_aligned'  # Use V8.6 aligned version
+postproc_smoothing_kernel: 3
+postproc_boundary_refinement: true
+
+# Rare behavior oversampling (V8.6 feature)
+oversample_rare: true  # Oversample rare behaviors × 3
+
+# Per-behavior minimum durations (SAME AS V8.5)
+adaptive_min_duration: true
+min_duration_config:
+  # Brief behaviors
+  ejaculate: 2
+  flinch: 2
+  biteobject: 2
+
+  # Short behaviors
+  sniff: 3
+  sniffgenital: 3
+  sniffbody: 3
+  sniffface: 3
+  approach: 3
+  selfgroom: 3
+
+  # Medium behaviors
+  mount: 4
+  attack: 4
+  chase: 4
+  escape: 4
+  avoid: 4
+
+  # Long behaviors
+  intromit: 5
+  rest: 5
+  huddle: 5
+
+  # Default for others
+  default: 3
+
+# Seed (SAME AS V8.5)
+seed: 42
+
+# ====================
+# V8.6 FEATURE NOTES
+# ====================
+# The ONLY difference from V8.5 is the model architecture:
+# - Input: 370 dims (MARS features) vs 112 dims (basic features)
+# - MARS features include: joint angles, jerk, relative positions, etc.
+# - Model capacity same (conv+lstm structure identical to V8.5)
+#
+# Expected improvement purely from richer features:
+# - Freeze detection: Jerk features should enable F1 > 0
+# - Sniffgenital: Relative positions should improve recall
+# - Mount: Joint angles should improve precision

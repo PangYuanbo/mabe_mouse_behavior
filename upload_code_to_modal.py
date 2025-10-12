@@ -68,6 +68,15 @@ def main():
             files_to_upload[relative_path] = content
         print(f"  Found: {relative_path}")
 
+    # Upload versions directory (V8.5, V8 fine_grained, etc.)
+    versions_dir = Path("versions")
+    for file_path in versions_dir.rglob("*.py"):
+        relative_path = str(file_path.relative_to("."))
+        with open(file_path, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
+            files_to_upload[relative_path] = content
+        print(f"  Found: {relative_path}")
+
     print(f"\nTotal files: {len(files_to_upload)}")
     print("\nUploading to Modal...")
 

@@ -1,6 +1,6 @@
-# V8.5 Full Behaviors Configuration
-# ALL 37 behaviors included (not just 27 like V8/V8.1)
-# Competition-compliant: "identify over 30 different social and non-social behaviors"
+# V8.5 No Class Weights Configuration
+# 38 classes (like V8.5) but without class weights (like V8.1)
+# Relies purely on Focal Loss for handling imbalance
 
 # Data settings
 data_dir: 'C:/Users/aaron/PycharmProjects/mabe_mouse_behavior/data/kaggle'
@@ -13,23 +13,23 @@ num_keypoints: 7
 # Model settings
 model_type: 'v8.5_multitask'
 input_dim: 112  # 56 coords + 28 speeds + 28 accels
-num_actions: 38  # V8.5: 0=background + 37 behaviors (was 28 in V8)
+num_actions: 38  # 0=background + 37 behaviors
 
-# V8.5 architecture (same as V8, just different output dimension)
+# V8.5 architecture (same as V8.1)
 conv_channels: [128, 256, 512]
 lstm_hidden: 256
 lstm_layers: 2
 dropout: 0.0
 
-# Sequence settings
+# Sequence settings (same as V8.1)
 sequence_length: 100
 stride: 25
 frame_gap: 1
 fps: 33.3
 
-# Training settings
+# Training settings (same as V8.1)
 epochs: 100
-batch_size: 256  # RTX 5090 can handle this
+batch_size: 256
 learning_rate: 0.00005
 weight_decay: 0.0001
 optimizer: 'adamw'
@@ -38,26 +38,23 @@ grad_clip: 1.0
 # Warmup
 warmup_epochs: 5
 
-# Multi-task loss weights
+# Multi-task loss weights (same as V8.1)
 action_loss_weight: 1.0
 agent_loss_weight: 0.3
 target_loss_weight: 0.3
 
-# Focal Loss (critical for handling class imbalance with 38 classes!)
+# Focal Loss - ONLY defense against imbalance (no class weights!)
 use_focal_loss: true
-focal_gamma: 1.5
+focal_gamma: 2.0  # Increased from 1.5 to compensate for no class weights
 
-# V8.5: Class weights disabled (same as V8.1)
-# Weights computed based on inverse frequency (disabled)
-# Very rare behaviors (ejaculate=3 intervals, biteobject=33) may not be learned
+# NO class weights (like V8.1)
 use_class_weights: false
-# class_weight_strategy: 'inverse_sqrt_freq'  # Disabled - Options: 'inverse_freq', 'inverse_sqrt_freq', 'balanced'
 
-# Learning rate scheduler
+# Learning rate scheduler (same as V8.1)
 scheduler: 'cosine'
 min_lr: 0.000005
 
-# Data augmentation (disabled for now)
+# Data augmentation
 use_augmentation: false
 noise_std: 0.0
 temporal_jitter: 0
@@ -67,12 +64,12 @@ num_workers: 0
 pin_memory: true
 
 # Checkpoint
-checkpoint_dir: 'checkpoints/v8.5_full_behaviors'
+checkpoint_dir: 'checkpoints/v8.5_no_weights'
 early_stopping_patience: 20
 
 # Device
 device: 'cuda'
-use_amp: false  # Mixed precision (disable if issues)
+use_amp: false
 
 # Motion features
 use_motion_features: true
@@ -80,12 +77,11 @@ motion_fps: 33.3
 
 # Advanced postprocessing (inherit from V8.1)
 use_advanced_postprocessing: true
-postproc_version: 'v8.5'  # V8.5-specific postprocessing
+postproc_version: 'v8.5'
 postproc_smoothing_kernel: 3
 postproc_boundary_refinement: true
 
-# V8.5 specific: Per-behavior minimum durations
-# Different behaviors have different typical lengths
+# Per-behavior minimum durations
 adaptive_min_duration: true
 min_duration_config:
   # Brief behaviors
