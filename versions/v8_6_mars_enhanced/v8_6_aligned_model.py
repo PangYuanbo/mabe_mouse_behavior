@@ -34,31 +34,39 @@ class MultiScaleConv1D(nn.Module):
     def __init__(self, input_dim, output_dim, dropout=0.3):
         super().__init__()
 
+        # Divide channels evenly across 3 branches (handle rounding)
+        # For output_dim=128: short=43, medium=43, long=42 → total=128
+        short_dim = (output_dim + 2) // 3  # Round up
+        medium_dim = (output_dim + 1) // 3  # Round up
+        long_dim = output_dim - short_dim - medium_dim  # Remainder
+
+        self.concat_dim = short_dim + medium_dim + long_dim  # Should equal output_dim
+
         # Three parallel conv branches
         self.conv_short = nn.Sequential(
-            nn.Conv1d(input_dim, output_dim // 3, kernel_size=3, padding=1),
-            nn.BatchNorm1d(output_dim // 3),
+            nn.Conv1d(input_dim, short_dim, kernel_size=3, padding=1),
+            nn.BatchNorm1d(short_dim),
             nn.ReLU(),
             nn.Dropout(dropout)
         )
 
         self.conv_medium = nn.Sequential(
-            nn.Conv1d(input_dim, output_dim // 3, kernel_size=7, padding=3),
-            nn.BatchNorm1d(output_dim // 3),
+            nn.Conv1d(input_dim, medium_dim, kernel_size=7, padding=3),
+            nn.BatchNorm1d(medium_dim),
             nn.ReLU(),
             nn.Dropout(dropout)
         )
 
         self.conv_long = nn.Sequential(
-            nn.Conv1d(input_dim, output_dim // 3, kernel_size=15, padding=7),
-            nn.BatchNorm1d(output_dim // 3),
+            nn.Conv1d(input_dim, long_dim, kernel_size=15, padding=7),
+            nn.BatchNorm1d(long_dim),
             nn.ReLU(),
             nn.Dropout(dropout)
         )
 
-        # Fusion layer
+        # Fusion layer (input should match concat_dim which equals output_dim)
         self.fusion = nn.Sequential(
-            nn.Conv1d(output_dim, output_dim, kernel_size=1),
+            nn.Conv1d(self.concat_dim, output_dim, kernel_size=1),
             nn.BatchNorm1d(output_dim),
             nn.ReLU()
         )
